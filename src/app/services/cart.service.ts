@@ -1,6 +1,8 @@
 import { HttpClient } from '@angular/common/http';
 import { Injectable } from '@angular/core';
 import { NavigationExtras, Router } from '@angular/router';
+import { NgxSpinnerService } from 'ngx-spinner';
+import { ToastrService } from 'ngx-toastr';
 import { BehaviorSubject } from 'rxjs';
 import { environment } from 'src/environments/environment';
 import { CartModelPublic, CartModelServer } from '../models/cart.model';
@@ -39,6 +41,8 @@ private serverUrl = environment.SERVER_URL;
   constructor(private http: HttpClient,
               private productService: ProductService,
               private orderService: OrderService,
+              private toast: ToastrService,
+              private spinner: NgxSpinnerService,
               private router: Router) {
 
       this.cartTotal$.next(this.cartDataServer.total);
@@ -83,13 +87,20 @@ private serverUrl = environment.SERVER_URL;
       if(this.cartDataServer.data[0].product == undefined) {
         this.cartDataServer.data[0].product = prod;
         this.cartDataServer.data[0].numInCart = quantity !== undefined ? quantity : 1;
-        // TODO calculate total amount
+        // calculate total amount
+        this.CalculateTotal();
         this.cartDataClient.prodData[0].incart = this.cartDataServer.data[0].numInCart;
         this.cartDataClient.total = this.cartDataServer.total;
         localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
         this.cartData$.next({...this.cartDataServer});
 
-        // TODO display a toast notification
+        // display a toast notification
+        this.toast.success(`${prod.name} added to the cart`, 'Product Added', {
+          timeOut: 1500,
+          progressBar: true,
+          progressAnimation: 'increasing',
+          positionClass: 'toast-top-right'
+        })
       }
        // 2. if the cart has some items
         else {
@@ -100,11 +111,21 @@ private serverUrl = environment.SERVER_URL;
             if (quantity !== undefined && quantity <= prod.quantity) {
               this.cartDataServer.data[index].numInCart = this.cartDataServer.data[index].numInCart < prod.quantity ? quantity : prod.quantity;
             } else {
-              this.cartDataServer.data[index].numInCart = this.cartDataServer.data[index].numInCart < prod.quantity ? this.cartDataServer.data[index].numInCart++ : prod.quantity;
+              this.cartDataServer.data[index].numInCart < prod.quantity ? this.cartDataServer.data[index].numInCart++ : prod.quantity;
             }
 
             this.cartDataClient.prodData[index].incart = this.cartDataServer.data[index].numInCart;
-            // TODO display a toast notification
+              // calculate total amount
+              this.CalculateTotal();
+              this.cartDataClient.total = this.cartDataServer.total;
+            localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
+            // display a toast notification
+            this.toast.info(`${prod.name} quantity updated in the cart`, 'Product Updated', {
+              timeOut: 1500,
+              progressBar: true,
+              progressAnimation: 'increasing',
+              positionClass: 'toast-top-right'
+            });
 
           } //end of if
           // b. if that item is not in cart
@@ -119,9 +140,18 @@ private serverUrl = environment.SERVER_URL;
                 id: prod.id
               });
 
-              // TODO display a toast notification
+              // localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
 
-              // TODO calculate total amount
+              // display a toast notification
+              this.toast.success(`${prod.name} added to the cart`, 'Product Added', {
+                timeOut: 1500,
+                progressBar: true,
+                progressAnimation: 'increasing',
+                positionClass: 'toast-top-right'
+              })
+
+              // calculate total amount
+              this.CalculateTotal();
               this.cartDataClient.total = this.cartDataServer.total;
               localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
               this.cartData$.next({...this.cartDataServer});
@@ -136,7 +166,8 @@ private serverUrl = environment.SERVER_URL;
     if (increase) {
       data.numInCart < data.product.quantity ? data.numInCart++ : data.product.quantity;
       this.cartDataClient.prodData[index].incart = data.numInCart;
-      // TODO calculate total amount
+      // calculate total amount
+      this.CalculateTotal();
       this.cartDataClient.total = this.cartDataServer.total;
       localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
       this.cartData$.next({...this.cartDataServer});
@@ -149,7 +180,8 @@ private serverUrl = environment.SERVER_URL;
       } else {
         this.cartData$.next({...this.cartDataServer});
         this.cartDataClient.prodData[index].incart = data.numInCart;
-        // TODO calculate total amount
+        /// calculate total amount
+        this.CalculateTotal();
         this.cartDataClient.total = this.cartDataServer.total;
         localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
       }
@@ -160,7 +192,8 @@ private serverUrl = environment.SERVER_URL;
     if (window.confirm('Are you sure to remove this item from your cart?')) {
       this.cartDataServer.data.splice(index, 1);
       this.cartDataClient.prodData.splice(index, 1);
-      // TODO calculate total amount
+      // calculate total amount
+      this.CalculateTotal();
       this.cartDataClient.total = this.cartDataServer.total;
 
       if (this.cartDataClient.total == 0) {
@@ -214,20 +247,31 @@ private serverUrl = environment.SERVER_URL;
                 }
               };
 
-              //TODO hide spinner
+              // hide spinner
+              this.spinner.hide();
               this.router.navigate(['/thankyou'], navigationExtras).then(p => {
                 this.cartDataClient = {total: 0, prodData: [{incart: 0, id: 0}]};
                 this.cartTotal$.next(0);
                 localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
-              })
+              });
             }
 
-          })
+          });
 
-        })
+        });
+      } else {
+        this.spinner.hide();
+        this.router.navigateByUrl('/checkout');
+        this.toast.error('Sorry, failed to book the order', 'Order Status', {
+          timeOut: 1500,
+                progressBar: true,
+                progressAnimation: 'increasing',
+                positionClass: 'toast-top-right'
+        });
       }
     });
   }
+
   private resetServerData() {
     this.cartDataServer = {
       total: 0,
@@ -238,6 +282,15 @@ private serverUrl = environment.SERVER_URL;
     };
 
     this.cartData$.next({...this.cartDataServer});
+  }
+
+  CalculateSubTotal(index): number {
+    let subTotal = 0;
+
+    const p = this.cartDataServer.data[index];
+    subTotal = p.product.price * p.numInCart;
+
+    return subTotal;
   }
 
 }
