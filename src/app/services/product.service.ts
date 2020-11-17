@@ -15,7 +15,7 @@ export class ProductService {
 
  // Fetch products from the backend
  getAllProducts(numberOfResults = 10): Observable<ServerResponse> {
-  return this.http.get<ServerResponse>(this.SERVER_URL + '/products', {
+  return this.http.get<ServerResponse>(this.SERVER_URL + 'products', {
     params: {
       limit: numberOfResults.toString()
     }
@@ -24,12 +24,12 @@ export class ProductService {
 
 // GET SINGLE PRODUCT FROM SERVER
  getSingleProduct(id: number): Observable<ProductModelServer> {
-  return this.http.get<ProductModelServer>(this.SERVER_URL + '/products/' + id);
+  return this.http.get<ProductModelServer>(this.SERVER_URL + 'products/' + id);
  }
 
 // GET PRODUCTS FROM ONE CATEGORY
 getProductsFromCategory(catName: string): Observable<ProductModelServer[]> {
-  return this.http.get<ProductModelServer[]>(this.SERVER_URL + '/products/category/' + catName);
+  return this.http.get<ProductModelServer[]>(this.SERVER_URL + 'products/category/' + catName);
 }
 
 

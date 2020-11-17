@@ -21,7 +21,7 @@ export class CartComponent implements OnInit {
 
   ChangeQuantity(index: number, increase: boolean) {
     this.cartService.UpdateCartItems(index, increase);
-    
+
   }
 
 }

@@ -1,241 +1,243 @@
-import { HttpClient } from '@angular/common/http';
-import { Injectable } from '@angular/core';
-import { NavigationExtras, Router } from '@angular/router';
-import { NgxSpinnerService } from 'ngx-spinner';
-import { ToastrService } from 'ngx-toastr';
-import { BehaviorSubject } from 'rxjs';
-import { environment } from 'src/environments/environment';
-import { CartModelPublic, CartModelServer } from '../models/cart.model';
-import { ProductModelServer } from '../models/product.model';
-import { OrderService } from './order.service';
-import { ProductService } from './product.service';
+import {Injectable} from '@angular/core';
+import {ProductService} from "./product.service";
+import {BehaviorSubject} from "rxjs";
+import {CartModelPublic, CartModelServer} from "../models/cart.model";
+import {ProductModelServer} from "../models/product.model";
+import {HttpClient} from "@angular/common/http";
+import {environment} from "../../environments/environment";
+import {NavigationExtras, Router} from "@angular/router";
+import {OrderService} from "./order.service";
+import {NgxSpinnerService} from "ngx-spinner";
+import {ToastrService} from "ngx-toastr";
 
 @Injectable({
   providedIn: 'root'
 })
+
+
 export class CartService {
-private serverUrl = environment.SERVER_URL;
 
-  //Data variable to store the cart information on the client's local storage
-  private cartDataClient: CartModelPublic = {
-    total: 0,
-    prodData: [{
-      incart: 0,
-      id: 0
-    }]
-  };
+  ServerURL = environment.SERVER_URL;
 
-  //Data variable to store cart information on the server
+  private cartDataClient: CartModelPublic = {prodData: [{incart: 0, id: 0}], total: 0};  // This will be sent to the backend Server as post data
+  // Cart Data variable to store the cart information on the server
   private cartDataServer: CartModelServer = {
-    total: 0,
     data: [{
-      numInCart: 0,
-      product: undefined
-    }]
+      product: undefined,
+      numInCart: 0
+    }],
+    total: 0
   };
 
-  // OBSERVABLES FOR THE COMPONENTS TO SUBSCRIBE
   cartTotal$ = new BehaviorSubject<number>(0);
+  // Data variable to store the cart information on the client's local storage
+
   cartData$ = new BehaviorSubject<CartModelServer>(this.cartDataServer);
 
-  constructor(private http: HttpClient,
-              private productService: ProductService,
+
+  constructor(private productService: ProductService,
               private orderService: OrderService,
-              private toast: ToastrService,
+              private httpClient: HttpClient,
+              private router: Router,
               private spinner: NgxSpinnerService,
-              private router: Router) {
+              private toast: ToastrService) {
 
-      this.cartTotal$.next(this.cartDataServer.total);
-      this.cartData$.next(this.cartDataServer);
+    this.cartTotal$.next(this.cartDataServer.total);
+    this.cartData$.next(this.cartDataServer);
 
-      // Get information from local storage if any
-      let info: CartModelPublic = JSON.parse(localStorage.getItem('cart'));
+    let info: CartModelPublic = JSON.parse(localStorage.getItem('cart'));
 
-      // check if the info variable is null or has data in it
-      if (info !== null && info !== undefined && info.prodData[0].incart !== 0) {
-        //local storage is not empy and has some info
-         this.cartDataClient = info;
+    if (info !== null && info !== undefined && info.prodData[0].incart !== 0) {
+      // assign the value to our data variable which corresponds to the LocalStorage data format
+      this.cartDataClient = info;
+      // Loop through each entry and put it in the cartDataServer object
+      this.cartDataClient.prodData.forEach(p => {
+        this.productService.getSingleProduct(p.id).subscribe((actualProdInfo: ProductModelServer) => {
+          if (this.cartDataServer.data[0].numInCart === 0) {
+            this.cartDataServer.data[0].numInCart = p.incart;
+            this.cartDataServer.data[0].product = actualProdInfo;
+            this.CalculateTotal();
+            this.cartDataClient.total = this.cartDataServer.total;
+            localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
+          } else {
+            this.cartDataServer.data.push({
+              numInCart: p.incart,
+              product: actualProdInfo
+            });
+            this.CalculateTotal();
+            this.cartDataClient.total = this.cartDataServer.total;
+            localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
+          }
+          this.cartData$.next({...this.cartDataServer});
+        });
+      });
+    }
+  }
 
-         //loop through each entry and put it in the cartDataServer object
-         this.cartDataClient.prodData.forEach(p => {
-           this.productService.getSingleProduct(p.id).subscribe((actualProductInfo: ProductModelServer) => {
-            if (this.cartDataServer.data[0].numInCart == 0) {
-              this.cartDataServer.data[0].numInCart = p.incart;
-              this.cartDataServer.data[0].product = actualProductInfo;
-              // TODO create calculatetotal funcion and replace it here
-              this.cartDataClient.total = this.cartDataServer.total;
-              localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
-            } else {
-              // cartdataserver has already some entry in it
-              this.cartDataServer.data.push({
-                numInCart: p.incart,
-                product: actualProductInfo
-              });
-              // TODO create calculatetotal funcion and replace it here
-              this.cartDataClient.total = this.cartDataServer.total;
-              localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
-            }
-            this.cartData$.next({...this.cartDataServer});
-           })
-         })
-      }
+  CalculateSubTotal(index): number {
+    let subTotal = 0;
+
+    let p = this.cartDataServer.data[index];
+    // @ts-ignore
+    subTotal = p.product.price * p.numInCart;
+
+    return subTotal;
   }
 
   AddProductToCart(id: number, quantity?: number) {
+
     this.productService.getSingleProduct(id).subscribe(prod => {
-      // if the cart is empy
-      if(this.cartDataServer.data[0].product == undefined) {
+      // If the cart is empty
+      if (this.cartDataServer.data[0].product === undefined) {
         this.cartDataServer.data[0].product = prod;
         this.cartDataServer.data[0].numInCart = quantity !== undefined ? quantity : 1;
-        // calculate total amount
         this.CalculateTotal();
         this.cartDataClient.prodData[0].incart = this.cartDataServer.data[0].numInCart;
+        this.cartDataClient.prodData[0].id = prod.id;
         this.cartDataClient.total = this.cartDataServer.total;
         localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
         this.cartData$.next({...this.cartDataServer});
-
-        // display a toast notification
-        this.toast.success(`${prod.name} added to the cart`, 'Product Added', {
+        this.toast.success(`${prod.name} added to the cart.`, "Product Added", {
           timeOut: 1500,
           progressBar: true,
           progressAnimation: 'increasing',
           positionClass: 'toast-top-right'
         })
-      }
-       // 2. if the cart has some items
-        else {
-          let index = this.cartDataServer.data.findIndex(p => p.product.id == prod.id);  //-1 pr a positive value
+      }  // END of IF
+      // Cart is not empty
+      else {
+        let index = this.cartDataServer.data.findIndex(p => p.product.id === prod.id);
 
-          // a. if that item is already in cart => index is positive value
-          if (index !== -1) {
-            if (quantity !== undefined && quantity <= prod.quantity) {
-              this.cartDataServer.data[index].numInCart = this.cartDataServer.data[index].numInCart < prod.quantity ? quantity : prod.quantity;
-            } else {
-              this.cartDataServer.data[index].numInCart < prod.quantity ? this.cartDataServer.data[index].numInCart++ : prod.quantity;
-            }
+        // 1. If chosen product is already in cart array
+        if (index !== -1) {
 
-            this.cartDataClient.prodData[index].incart = this.cartDataServer.data[index].numInCart;
-              // calculate total amount
-              this.CalculateTotal();
-              this.cartDataClient.total = this.cartDataServer.total;
-            localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
-            // display a toast notification
-            this.toast.info(`${prod.name} quantity updated in the cart`, 'Product Updated', {
-              timeOut: 1500,
-              progressBar: true,
-              progressAnimation: 'increasing',
-              positionClass: 'toast-top-right'
-            });
+          if (quantity !== undefined && quantity <= prod.quantity) {
+            // @ts-ignore
+            this.cartDataServer.data[index].numInCart = this.cartDataServer.data[index].numInCart < prod.quantity ? quantity : prod.quantity;
+          } else {
+            // @ts-ignore
+            this.cartDataServer.data[index].numInCart < prod.quantity ? this.cartDataServer.data[index].numInCart++ : prod.quantity;
+          }
 
-          } //end of if
-          // b. if that item is not in cart
-            else {
-              this.cartDataServer.data.push({
-                numInCart: 1,
-                product: prod
-              });
 
-              this.cartDataClient.prodData.push({
-                incart: 1,
-                id: prod.id
-              });
-
-              // localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
-
-              // display a toast notification
-              this.toast.success(`${prod.name} added to the cart`, 'Product Added', {
-                timeOut: 1500,
-                progressBar: true,
-                progressAnimation: 'increasing',
-                positionClass: 'toast-top-right'
-              })
-
-              // calculate total amount
-              this.CalculateTotal();
-              this.cartDataClient.total = this.cartDataServer.total;
-              localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
-              this.cartData$.next({...this.cartDataServer});
-            } //end of else
+          this.cartDataClient.prodData[index].incart = this.cartDataServer.data[index].numInCart;
+          this.toast.info(`${prod.name} quantity updated in the cart.`, "Product Updated", {
+            timeOut: 1500,
+            progressBar: true,
+            progressAnimation: 'increasing',
+            positionClass: 'toast-top-right'
+          })
         }
+        // 2. If chosen product is not in cart array
+        else {
+          this.cartDataServer.data.push({
+            product: prod,
+            numInCart: 1
+          });
+          this.cartDataClient.prodData.push({
+            incart: 1,
+            id: prod.id
+          });
+          this.toast.success(`${prod.name} added to the cart.`, "Product Added", {
+            timeOut: 1500,
+            progressBar: true,
+            progressAnimation: 'increasing',
+            positionClass: 'toast-top-right'
+          })
+        }
+        this.CalculateTotal();
+        this.cartDataClient.total = this.cartDataServer.total;
+        localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
+        this.cartData$.next({...this.cartDataServer});
+      }  // END of ELSE
+
+
     });
   }
 
-  UpdateCartItems(index: number, increase: boolean) {
+  UpdateCartItems(index, increase: Boolean) {
     let data = this.cartDataServer.data[index];
-
     if (increase) {
+      // @ts-ignore
       data.numInCart < data.product.quantity ? data.numInCart++ : data.product.quantity;
       this.cartDataClient.prodData[index].incart = data.numInCart;
-      // calculate total amount
       this.CalculateTotal();
       this.cartDataClient.total = this.cartDataServer.total;
-      localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
       this.cartData$.next({...this.cartDataServer});
+      localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
     } else {
+      // @ts-ignore
       data.numInCart--;
 
+      // @ts-ignore
       if (data.numInCart < 1) {
-        //TODO delete product from the cart
+        this.DeleteProductFromCart(index);
         this.cartData$.next({...this.cartDataServer});
       } else {
+        // @ts-ignore
         this.cartData$.next({...this.cartDataServer});
         this.cartDataClient.prodData[index].incart = data.numInCart;
-        /// calculate total amount
         this.CalculateTotal();
         this.cartDataClient.total = this.cartDataServer.total;
         localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
       }
+
     }
+
   }
 
-  DeleteProductFromCart(index: number) {
-    if (window.confirm('Are you sure to remove this item from your cart?')) {
+  DeleteProductFromCart(index) {
+    /*    console.log(this.cartDataClient.prodData[index].prodId);
+        console.log(this.cartDataServer.data[index].product.id);*/
+
+    if (window.confirm('Are you sure you want to delete the item?')) {
       this.cartDataServer.data.splice(index, 1);
       this.cartDataClient.prodData.splice(index, 1);
-      // calculate total amount
       this.CalculateTotal();
       this.cartDataClient.total = this.cartDataServer.total;
 
-      if (this.cartDataClient.total == 0) {
-        this.cartDataClient = {total: 0, prodData: [{incart: 0, id: 0}]};
+      if (this.cartDataClient.total === 0) {
+        this.cartDataClient = {prodData: [{incart: 0, id: 0}], total: 0};
         localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
       } else {
         localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
       }
 
-      if (this.cartDataServer.total == 0) {
-        this.cartDataServer = {total: 0, data: [{numInCart: 0, product: undefined}]};
+      if (this.cartDataServer.total === 0) {
+        this.cartDataServer = {
+          data: [{
+            product: undefined,
+            numInCart: 0
+          }],
+          total: 0
+        };
         this.cartData$.next({...this.cartDataServer});
       } else {
         this.cartData$.next({...this.cartDataServer});
       }
-    } else {
-      // if the user clicks the cancel button
+    }
+    // If the user doesn't want to delete the product, hits the CANCEL button
+    else {
       return;
     }
-  }
 
-  private CalculateTotal() {
-    let Total = 0;
 
-    this.cartDataServer.data.forEach(p => {
-      const {numInCart} = p;
-      const {price} = p.product;
-
-      Total += numInCart * price;
-    });
-    this.cartDataServer.total = Total;
-    this.cartTotal$.next(this.cartDataServer.total);
   }
 
   CheckoutFromCart(userId: number) {
-    this.http.post(`${this.serverUrl}/orders/payment`, null).subscribe((res: {success: boolean}) => {
+
+    this.httpClient.post(`${this.ServerURL}orders/payment`, null).subscribe((res: { success: Boolean }) => {
+      console.clear();
+
       if (res.success) {
+
+
         this.resetServerData();
-        this.http.post(`${this.serverUrl}/orders/new`, {
+        this.httpClient.post(`${this.ServerURL}orders/new`, {
           userId: userId,
           products: this.cartDataClient.prodData
-        }).subscribe((data: OrderResponse) => {
+        }).subscribe((data: OrderConfirmationResponse) => {
+
           this.orderService.getSingleOrder(data.order_id).then(prods => {
             if (data.success) {
               const navigationExtras: NavigationExtras = {
@@ -246,61 +248,65 @@ private serverUrl = environment.SERVER_URL;
                   total: this.cartDataClient.total
                 }
               };
-
-              // hide spinner
               this.spinner.hide();
               this.router.navigate(['/thankyou'], navigationExtras).then(p => {
-                this.cartDataClient = {total: 0, prodData: [{incart: 0, id: 0}]};
+                this.cartDataClient = {prodData: [{incart: 0, id: 0}], total: 0};
                 this.cartTotal$.next(0);
                 localStorage.setItem('cart', JSON.stringify(this.cartDataClient));
               });
             }
-
           });
 
-        });
+        })
       } else {
         this.spinner.hide();
-        this.router.navigateByUrl('/checkout');
-        this.toast.error('Sorry, failed to book the order', 'Order Status', {
+        this.router.navigateByUrl('/checkout').then();
+        this.toast.error(`Sorry, failed to book the order`, "Order Status", {
           timeOut: 1500,
-                progressBar: true,
-                progressAnimation: 'increasing',
-                positionClass: 'toast-top-right'
-        });
+          progressBar: true,
+          progressAnimation: 'increasing',
+          positionClass: 'toast-top-right'
+        })
       }
+    })
+  }
+
+
+  private CalculateTotal() {
+    let Total = 0;
+
+    this.cartDataServer.data.forEach(p => {
+      const {numInCart} = p;
+      const {price} = p.product;
+      // @ts-ignore
+      Total += numInCart * price;
     });
+    this.cartDataServer.total = Total;
+    this.cartTotal$.next(this.cartDataServer.total);
   }
 
   private resetServerData() {
     this.cartDataServer = {
-      total: 0,
       data: [{
-        numInCart: 0,
-        product: undefined
-      }]
+        product: undefined,
+        numInCart: 0
+      }],
+      total: 0
     };
-
     this.cartData$.next({...this.cartDataServer});
   }
 
-  CalculateSubTotal(index): number {
-    let subTotal = 0;
-
-    const p = this.cartDataServer.data[index];
-    subTotal = p.product.price * p.numInCart;
-
-    return subTotal;
-  }
-
 }
 
-interface OrderResponse {
-  order_id: number,
-  success: boolean,
-  message: string,
+interface OrderConfirmationResponse {
+  order_id: number;
+  success: Boolean;
+  message: String;
   products: [{
-    id: string,
-    numInCart: string
-  }];
+    id: String,
+    numInCart: String
+  }]
 }
+
+
+
