@@ -14,6 +14,10 @@ import { ThankyouComponent } from './components/thankyou/thankyou.component';
 import { HttpClientModule } from '@angular/common/http';
 import { NgxSpinnerModule } from 'ngx-spinner';
 import { ToastrModule } from 'ngx-toastr';
+import { LoginComponent } from './components/login/login.component';
+import { ProfileComponent } from './components/profile/profile.component';
+import { FormsModule } from '@angular/forms';
+import { GoogleLoginProvider, SocialLoginModule, SocialAuthServiceConfig } from 'angularx-social-login';
 
 @NgModule({
   declarations: [
@@ -24,7 +28,9 @@ import { ToastrModule } from 'ngx-toastr';
     CheckoutComponent,
     HomeComponent,
     ProductComponent,
-    ThankyouComponent
+    ThankyouComponent,
+    LoginComponent,
+    ProfileComponent
   ],
   imports: [
     BrowserModule,
@@ -32,9 +38,27 @@ import { ToastrModule } from 'ngx-toastr';
     AppRoutingModule,
     HttpClientModule,
     NgxSpinnerModule,
-    ToastrModule.forRoot()
-  ],
-  providers: [],
+    ToastrModule.forRoot(),
+    FormsModule,
+    SocialLoginModule
+
+    ],
+    providers: [
+      {
+        provide: 'SocialAuthServiceConfig',
+        useValue: {
+          autoLogin: false,
+          providers: [
+            {
+              id: GoogleLoginProvider.PROVIDER_ID,
+              provider: new GoogleLoginProvider(
+                '1028404518191-05jt8f3gek3jfaq1ak13mbfa6dd3a3l4.apps.googleusercontent.com'
+              )
+            }
+          ]
+        } as SocialAuthServiceConfig,
+      }
+    ],
   bootstrap: [AppComponent]
 })
 export class AppModule { }
